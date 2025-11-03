@@ -251,26 +251,35 @@ bool TRAC_IKKinematicsPlugin::initialize(const rclcpp::Node::SharedPtr& node,
                 "TRAC-IK: joints=[%s]", oss.str().c_str());
   }
 
-  // Try to get parameters from the node for solve type
+  // Try to get parameters from MoveIt (loaded under robot_description_kinematics.<group>.*)
   position_ik_ = false;
   solve_type = "Speed";
-  
-  try
-  {
-    if (node)
-    {
-      position_ik_ = node->get_parameter_or<bool>("position_only_ik", false);
-      solve_type = node->get_parameter_or<std::string>("solve_type", "Speed");
-    }
-  }
-  catch (const std::exception& e)
-  {
-    // Silently ignore parameter errors and use defaults
-  }
+
+  auto try_param_bool = [&](const std::string& key, bool& out, bool def) -> bool {
+    return lookupParam(node, key, out, def);
+  };
+  auto try_param_str = [&](const std::string& key, std::string& out, const std::string& def) -> bool {
+    return lookupParam(node, key, out, def);
+  };
+
+  // Primary (MoveIt standard): robot_description_kinematics.<group>.<param>
+  bool pos_tmp = position_ik_;
+  std::string solve_tmp = solve_type;
+  bool got_pos = try_param_bool("robot_description_kinematics." + group_name + ".position_only_ik", pos_tmp, position_ik_);
+  bool got_solve = try_param_str("robot_description_kinematics." + group_name + ".solve_type", solve_tmp, solve_type);
+
+  // Fallbacks
+  if (!got_pos) got_pos = try_param_bool(group_name + ".position_only_ik", pos_tmp, position_ik_);
+  if (!got_pos) got_pos = try_param_bool("position_only_ik", pos_tmp, position_ik_);
+  if (!got_solve) got_solve = try_param_str(group_name + ".solve_type", solve_tmp, solve_type);
+  if (!got_solve) got_solve = try_param_str("solve_type", solve_tmp, solve_type);
+
+  if (got_pos) position_ik_ = pos_tmp;
+  if (got_solve) solve_type = solve_tmp;
 
   RCLCPP_INFO(kinematics::KinematicsBase::LOGGER,
-              "TRAC-IK: position_only_ik=%s solve_type=%s",
-              position_ik_ ? "true" : "false", solve_type.c_str());
+              "TRAC-IK: position_only_ik=%s solve_type=%s (group=%s)",
+              position_ik_ ? "true" : "false", solve_type.c_str(), group_name.c_str());
 
   active_ = true;
   RCLCPP_INFO(kinematics::KinematicsBase::LOGGER,
